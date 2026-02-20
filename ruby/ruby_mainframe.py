@@ -101,10 +101,18 @@ class Ruby:
 
         # FORCE IDENTITY OVERRIDE
         creator_keywords = ["who created you", "who developed you", "who is your creator", "who made you"]
-        if any(keyword in user_input.lower() for keyword in creator_keywords):
-            response_text = "I was developed by Sakthi Sabarish."
+        hod_aiml_keywords = ["who is the hod of aiml", "head of aiml", "hod of ai and ml"]
+        
+        user_lower = user_input.lower()
+        response_text = None
+
+        if any(keyword in user_lower for keyword in creator_keywords):
+            response_text = "I was developed by MR. DR. SIVA PRAKASH."
+        elif any(keyword in user_lower for keyword in hod_aiml_keywords):
+            response_text = "The HOD of AIML is MR. DR. SIVA PRAKASH."
+
+        if response_text:
             self.chat_history["messages"].append(HumanMessage(content=user_input))
-            # Create a mock AI message for history
             from langchain_core.messages import AIMessage
             self.chat_history["messages"].append(AIMessage(content=response_text))
             
