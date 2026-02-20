@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruby Voice Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0f0f13;
+            --card-bg: #1a1a24;
+            --primary: #00b4ff;
+            --secondary: #ff5a5a;
+            --accent: #ffffff;
+            --text: #e0e0e0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg-dark);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        h1 {
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin: 0;
+            color: var(--primary);
+            text-shadow: 0 0 20px rgba(0, 180, 255, 0.3);
+        }
+
+        .status-badge {
+            padding: 0.5rem 1.5rem;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            font-size: 0.9rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .orb-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .orb {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: var(--primary);
+            box-shadow: 0 0 50px var(--primary);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            z-index: 2;
+        }
+
+        .orb-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: rotate 10s linear infinite;
+        }
+
+        .orb-pulse {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 2px solid var(--primary);
+            border-radius: 50%;
+            opacity: 0;
+            animation: pulse-ring 2s ease-out infinite;
+        }
+
+        @keyframes rotate {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(0.5);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(1.5);
+                opacity: 0;
+            }
+        }
+
+        /* States */
+        .state-Listening .orb {
+            background: var(--primary);
+            box-shadow: 0 0 80px var(--primary);
+            transform: scale(1.2);
+        }
+
+        .state-Listening .orb-pulse {
+            border-color: var(--primary);
+        }
+
+        .state-Speaking .orb {
+            background: var(--secondary);
+            box-shadow: 0 0 80px var(--secondary);
+            transform: scale(1.1);
+        }
+
+        .state-Speaking .orb-pulse {
+            border-color: var(--secondary);
+            animation-duration: 1.5s;
+        }
+
+        .state-Thinking .orb {
+            background: var(--accent);
+            box-shadow: 0 0 80px var(--accent);
+            animation: float 2s ease-in-out infinite;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-20px);
+            }
+        }
+
+        .chat-container {
+            width: 90%;
+            height: 200px;
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+        }
+
+        .message {
+            padding: 0.8rem 1.2rem;
+            border-radius: 12px;
+            max-width: 80%;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .message.user {
+            align-self: flex-end;
+            background: rgba(0, 180, 255, 0.1);
+            color: var(--primary);
+            border: 1px solid rgba(0, 180, 255, 0.2);
+        }
+
+        .message.ruby {
+            align-self: flex-start;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body class="state-Idle">
+
+    <div class="container">
+        <h1>RUBY CORE</h1>
+        <div id="status" class="status-badge">System: Offline</div>
+
+        <div class="orb-container">
+            <div class="orb-ring"></div>
+            <div class="orb-pulse"></div>
+            <div class="orb"></div>
+        </div>
+
+        <div class="chat-container" id="chat">
+            <div class="message ruby">System initialized. Waiting for connection...</div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const body = document.body;
+        const statusBadge = document.getElementById('status');
+        const chat = document.getElementById('chat');
+
+        socket.on('connect', () => {
+            statusBadge.innerText = 'System: Online';
+            statusBadge.style.color = '#00ff88';
+        });
+
+        socket.on('state_change', (data) => {
+            console.log('State change:', data.state);
+            body.className = 'state-' + data.state;
+            statusBadge.innerText = 'System: ' + data.state;
+        });
+
+        socket.on('new_message', (data) => {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message ' + data.sender.toLowerCase();
+            msgDiv.innerText = data.text;
+            chat.appendChild(msgDiv);
+            chat.scrollTop = chat.scrollHeight;
+        });
+
+        socket.on('disconnect', () => {
+            statusBadge.innerText = 'System: Offline';
+            statusBadge.style.color = '#ff5a5a';
+        });
+
+        // --- MOBILE VOICE SUPPORT ---
+        let mediaRecorder;
+        let audioChunks = [];
+
+        async function startRecording() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = () => {
+                    const base64Audio = reader.result.split(',')[1];
+                    socket.emit('mobile_audio', { audio: base64Audio });
+                }
+                audioChunks = [];
+            };
+            mediaRecorder.start();
+        }
+
+        // Trigger recording on click (required by mobile browsers)
+        document.querySelector('.orb').addEventListener('mousedown', startRecording);
+        document.querySelector('.orb').addEventListener('mouseup', () => mediaRecorder.stop());
+        document.querySelector('.orb').addEventListener('touchstart', startRecording);
+        document.querySelector('.orb').addEventListener('touchend', () => mediaRecorder.stop());
+    </script>
+</body>
+
+</html>

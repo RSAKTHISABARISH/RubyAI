@@ -1,0 +1,9 @@
+@echo off
+echo Starting RubyBot Tunneling Service...
+echo --------------------------------------
+echo 1. Starting Ruby Dashboard Server...
+start /b cmd /c ".\\.venv\\Scripts\\python frontend\\web_server.py"
+timeout /t 5
+echo 2. Opening Public Tunnel...
+cmd /c "lt --port 5001"
+pause
