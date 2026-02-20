@@ -56,18 +56,33 @@ def web_navigation(site_name: str, search_query: str = "") -> str:
         "linkedin": {"base": "https://www.linkedin.com", "search": "https://www.linkedin.com/search/results/all/?keywords="},
         "amazon": {"base": "https://www.amazon.in", "search": "https://www.amazon.in/s?k="},
         "flipkart": {"base": "https://www.flipkart.com", "search": "https://www.flipkart.com/search?q="},
+        "makemytrip": {"base": "https://www.makemytrip.com", "search": "https://www.makemytrip.com/hotels/hotel-listing/?city="},
+        "bookmyshow": {"base": "https://in.bookmyshow.com", "search": "https://in.bookmyshow.com/explore/movies-"},
+        "myntra": {"base": "https://www.myntra.com", "search": "https://www.myntra.com/"},
     }
     
     clean_site = site_name.lower().strip()
+    
+    # Handle descriptive terms
+    if "ticket" in clean_site or "book" in clean_site:
+        if "bus" in clean_site: clean_site = "redbus"
+        elif "train" in clean_site: clean_site = "irctc"
+        elif "movie" in clean_site: clean_site = "bookmyshow"
+        elif "hotel" in clean_site or "flight" in clean_site: clean_site = "makemytrip"
+    
+    if "product" in clean_site or "shop" in clean_site:
+        if "cloth" in clean_site: clean_site = "myntra"
+        else: clean_site = "amazon"
+
     config = mapping.get(clean_site)
     
     if config:
         if search_query:
             url = f"{config['search']}{encoded_query}"
-            msg = f"Searching for '{search_query}' on {site_name}."
+            msg = f"Navigating to {site_name} to search for '{search_query}'."
         else:
             url = config['base']
-            msg = f"Opening {site_name}."
+            msg = f"Opening {site_name} for you."
         
         webbrowser.open(url)
         return msg
@@ -145,3 +160,37 @@ def run_terminal_command(command: str) -> str:
         return f"Command Output:\n{result}"
     except Exception as e:
         return f"Error running command: {str(e)}"
+
+@tool
+def record_user_activity(activity_type: str, details: str) -> str:
+    """Records user activities like searches or bookings to build a 'Frequently Used' history."""
+    import time
+    history_file = "user_history.txt"
+    try:
+        with open(history_file, "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {activity_type} | {details}\n")
+        return f"Activity recorded: {activity_type}"
+    except Exception as e:
+        return f"Error recording activity: {str(e)}"
+
+@tool
+def get_frequently_used(query: str = "") -> str:
+    """Analyzes history to find and suggest frequently used sites, apps, or searches."""
+    history_file = "user_history.txt"
+    if not os.path.exists(history_file):
+        return "No history found yet. Start using Ruby to see suggestions!"
+    try:
+        from collections import Counter
+        with open(history_file, "r") as f:
+            lines = f.readlines()
+        
+        activities = [line.split("|")[2].strip() for line in lines if "|" in line]
+        top_activities = Counter(activities).most_common(3)
+        
+        if not top_activities:
+            return "Not enough data for suggestions."
+            
+        suggestions = [f"- {act[0]} ({act[1]} times)" for act in top_activities]
+        return "Your Frequently Used Activities:\n" + "\n".join(suggestions)
+    except Exception as e:
+        return f"Error reading history: {str(e)}"

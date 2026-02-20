@@ -30,6 +30,8 @@ from utiles.pc_tools import (
     web_navigation,
     get_system_health,
     run_terminal_command,
+    record_user_activity,
+    get_frequently_used,
 )
 load_dotenv()
 
@@ -73,6 +75,8 @@ class Ruby:
                         web_navigation,                 # Navigate to websites
                         get_system_health,              # Check CPU/Battery
                         run_terminal_command,           # Execute terminal commands
+                        record_user_activity,           # Log user actions
+                        get_frequently_used,            # Suggest popular actions
                     ] + tools
 
         # Initialize TTS (Text-to-Speech)
