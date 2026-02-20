@@ -103,3 +103,21 @@ class SwitchLanguageTool(BaseTool):
         # Update the Ruby state to idle
         self._ruby.ruby_state = "idle"
         return f"Switched to {language}"
+class GetLatestNewsTool(BaseTool):
+    name: str = "get_latest_news"
+    description: str = (
+        "Fetches the top 5 trending world news headlines. "
+        "Use this when the user asks for 'the news' or 'what is happening in the world'."
+    )
+
+    def _run(self, query: str = "") -> str:
+        import requests
+        try:
+            # Using a public RSS-to-JSON or simple news API (mocking for safety if no key, 
+            # but we can try a direct fetch from a common source)
+            response = requests.get("https://newsdata.io/api/1/news?apikey=pub_36734c38d363b9ef77e567a57a8bf616b251a&q=top")
+            data = response.json()
+            headlines = [f"- {item['title']}" for item in data.get('results', [])[:5]]
+            return "Top Headlines:\n" + "\n".join(headlines) if headlines else "No news found at the moment."
+        except Exception as e:
+            return "Could not fetch news right now. Please try again later."

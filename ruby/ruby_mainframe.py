@@ -15,6 +15,7 @@ from utiles.ruby_tools import (
     YouTubeVideoPlayerTool,
     GetAvailableLanguagesTool,
     SwitchLanguageTool,
+    GetLatestNewsTool,
 )
 from utiles.toolbox import (
     calculator,
@@ -27,6 +28,8 @@ from utiles.pc_tools import (
     open_system_app,
     system_control,
     web_navigation,
+    get_system_health,
+    run_terminal_command,
 )
 load_dotenv()
 
@@ -59,6 +62,7 @@ class Ruby:
                         YouTubeVideoPlayerTool(self),   # Tool for playing YouTube videos
                         GetAvailableLanguagesTool(self), # Tool to check supported languages
                         SwitchLanguageTool(self),       # Tool to switch active language
+                        GetLatestNewsTool(),            # Tool to fetch latest news
                         calculator,                     # Basic calculator
                         query_document,                 # RAG document query tool
                         arduino_serial_communication,   # Hardware control tool
@@ -67,6 +71,8 @@ class Ruby:
                         open_system_app,                # Start apps
                         system_control,                 # Volume/System control
                         web_navigation,                 # Navigate to websites
+                        get_system_health,              # Check CPU/Battery
+                        run_terminal_command,           # Execute terminal commands
                     ] + tools
 
         # Initialize TTS (Text-to-Speech)

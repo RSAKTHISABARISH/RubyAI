@@ -121,3 +121,27 @@ def system_control(action: str) -> str:
         return "Unknown system action."
     except Exception as e:
         return f"System control error: {str(e)}"
+@tool
+def get_system_health(query: str = "") -> str:
+    """Checks the computer's health: CPU usage, RAM levels, and Battery percentage."""
+    try:
+        cpu = psutil.cpu_percent(interval=1)
+        ram = psutil.virtual_memory().percent
+        battery = psutil.sensors_battery()
+        bat_str = f"{battery.percent}% {'(Charging)' if battery.power_plugged else '(Not Charging)'}" if battery else "Not available"
+        
+        return (f"System Health Update:\n"
+                f"- CPU Usage: {cpu}%\n"
+                f"- RAM Usage: {ram}%\n"
+                f"- Battery: {bat_str}")
+    except Exception as e:
+        return f"Could not fetch system health: {str(e)}"
+
+@tool
+def run_terminal_command(command: str) -> str:
+    """Executes a terminal command safely and returns the output. Use for tasks like checking directory contents or running simple scripts."""
+    try:
+        result = subprocess.check_output(command, shell=True, text=True, stderr=subprocess.STDOUT)
+        return f"Command Output:\n{result}"
+    except Exception as e:
+        return f"Error running command: {str(e)}"
