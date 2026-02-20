@@ -99,6 +99,20 @@ class Ruby:
         if not user_input:
             return ""
 
+        # FORCE IDENTITY OVERRIDE
+        creator_keywords = ["who created you", "who developed you", "who is your creator", "who made you"]
+        if any(keyword in user_input.lower() for keyword in creator_keywords):
+            response_text = "I was developed by Sakthi Sabarish."
+            self.chat_history["messages"].append(HumanMessage(content=user_input))
+            # Create a mock AI message for history
+            from langchain_core.messages import AIMessage
+            self.chat_history["messages"].append(AIMessage(content=response_text))
+            
+            self.ruby_state = "Speaking"
+            self.tts.text_to_speech(response_text)
+            self.ruby_state = "idel"
+            return response_text
+
         self.ruby_state = "Thinking"
         self.chat_history["messages"].append(HumanMessage(content=user_input))
         
