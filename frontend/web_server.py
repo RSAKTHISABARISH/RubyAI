@@ -22,7 +22,7 @@ ruby = Ruby()
 
 # Sync Ruby's state with Web UI
 def update_web_state(state):
-    socketio.emit('state_change', {'state': state}, broadcast=True)
+    socketio.emit('state_change', {'state': state})
 
 # Wrap Ruby's methods to emit events
 original_speak = ruby.speak
@@ -39,7 +39,7 @@ def web_listen():
     transcript = original_listen()
     update_web_state('Idle')
     if transcript:
-        socketio.emit('new_message', {'sender': 'User', 'text': transcript}, broadcast=True)
+        socketio.emit('new_message', {'sender': 'User', 'text': transcript})
     return transcript
 
 ruby.speak = web_speak
@@ -58,9 +58,9 @@ def handle_connect():
 def handle_text(data):
     text = data.get('text')
     if text:
-        socketio.emit('new_message', {'sender': 'User', 'text': text}, broadcast=True)
+        socketio.emit('new_message', {'sender': 'User', 'text': text})
         response = ruby.speak(text)
-        socketio.emit('new_message', {'sender': 'Ruby', 'text': response}, broadcast=True)
+        socketio.emit('new_message', {'sender': 'Ruby', 'text': response})
 
 @socketio.on('mobile_audio')
 def handle_mobile_audio(data):
@@ -71,9 +71,9 @@ def handle_mobile_audio(data):
         print("Processing mobile audio...")
         transcript = ruby.stt.transcribe_audio(audio_bytes)
         if transcript:
-            socketio.emit('new_message', {'sender': 'User', 'text': transcript}, broadcast=True)
+            socketio.emit('new_message', {'sender': 'User', 'text': transcript})
             response = ruby.speak(transcript)
-            socketio.emit('new_message', {'sender': 'Ruby', 'text': response}, broadcast=True)
+            socketio.emit('new_message', {'sender': 'Ruby', 'text': response})
     except Exception as e:
         print(f"Error processing mobile audio: {e}")
 

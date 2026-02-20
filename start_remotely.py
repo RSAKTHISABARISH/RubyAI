@@ -15,11 +15,37 @@ def get_local_ip():
         s.close()
     return IP
 
+def kill_process_on_port(port):
+    try:
+        import psutil
+        for proc in psutil.process_iter(['pid', 'name']):
+            for conn in proc.connections(kind='inet'):
+                if conn.laddr.port == port:
+                    print(f"      - Stopping existing process {proc.info['name']} (PID: {proc.info['pid']}) on port {port}...")
+                    proc.kill()
+    except Exception:
+        # Fallback for Windows if psutil is not available
+        try:
+            output = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True).decode()
+            for line in output.strip().split('\n'):
+                pid = line.strip().split()[-1]
+                if pid != '0':
+                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
+        except:
+            pass
+
 def start_services():
     print("="*50)
     print("      RUBY REMOTE ACCESS STARTUP")
     print("="*50)
     
+    port = 5001
+    
+    # Pre-check: Close processes using the port
+    print(f"\n[0/3] Cleaning up port {port}...")
+    kill_process_on_port(port)
+    time.sleep(1)
+
     # 1. Start Web Server
     print("\n[1/3] Starting Ruby Dashboard...")
     server_proc = subprocess.Popen([sys.executable, "frontend/web_server.py"], 
@@ -28,42 +54,54 @@ def start_services():
                                     text=True)
     
     time.sleep(3)
-    
     local_ip = get_local_ip()
-    port = 5001
-    
     print(f"      - Local Access: http://localhost:{port}")
     print(f"      - Wifi Access:  http://{local_ip}:{port}")
     
-    # 2. Start Tunnel
-    print("\n[2/3] Starting Public Tunnel (LocalTunnel)...")
+    # 2. Start Tunnel (Try LocalTunnel first, then Ngrok)
+    print("\n[2/3] Starting Public Tunnel...")
+    
+    # Method A: LocalTunnel
     tunnel_proc = subprocess.Popen(["lt", "--port", str(port)], 
                                     stdout=subprocess.PIPE, 
                                     stderr=subprocess.STDOUT,
                                     text=True,
                                     shell=True)
     
+    time.sleep(2)
+    
     print("\n[3/3] Ready! Scan or copy the link below:")
     print("-" * 50)
     
     try:
-        # Try to find the URL from the tunnel output
-        for line in tunnel_proc.stdout:
+        # Wait a bit for LT to provide URL
+        timeout = 10
+        found_url = False
+        start_time = time.time()
+        
+        print("Checking for LocalTunnel URL...")
+        while time.time() - start_time < timeout:
+            line = tunnel_proc.stdout.readline()
             if "url is:" in line.lower():
                 url = line.split("is:")[-1].strip()
                 print(f"\n      PUBLIC URL: {url}")
-                print("\n      Open this on your phone!")
-                print("-" * 50)
+                found_url = True
                 break
+            time.sleep(0.1)
+
+        if not found_url:
+            print("\nLocalTunnel slow... Try starting Ngrok as fallback?")
+            print("Running: ngrok http 5001")
+            # If LT fails, you can manually run 'ngrok http 5001' in another terminal.
         
         print("\nRuby is running. Press Ctrl+C to stop everything.")
         
         while True:
-            # Keep reading server output to prevent buffer fill
+            # Keep reading server output
             server_line = server_proc.stdout.readline()
             if server_line:
                 print(f"[REB] {server_line.strip()}")
-            time.sleep(0.1)
+            time.sleep(0.01)
             
     except KeyboardInterrupt:
         print("\n\nStopping services...")
