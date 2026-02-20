@@ -3,6 +3,8 @@ import geocoder
 import subprocess
 import os
 import pyautogui
+import time
+from collections import Counter
 from langchain.tools import tool
 import win32gui
 import win32process
@@ -31,6 +33,17 @@ def list_open_windows(query: str = "") -> str:
     windows = []
     win32gui.EnumWindows(callback, windows)
     return "Open Windows: " + ", ".join(list(set(windows)))
+
+@tool
+def record_user_activity(activity_type: str, details: str) -> str:
+    """Records user activities like searches or bookings to build a 'Frequently Used' history."""
+    history_file = "user_history.txt"
+    try:
+        with open(history_file, "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {activity_type} | {details}\n")
+        return f"Activity recorded: {activity_type}"
+    except Exception as e:
+        return f"Error recording activity: {str(e)}"
 
 @tool
 def web_navigation(site_name: str, search_query: str = "") -> str:
@@ -85,12 +98,16 @@ def web_navigation(site_name: str, search_query: str = "") -> str:
             msg = f"Opening {site_name} for you."
         
         webbrowser.open(url)
+        # Automatically record history
+        record_user_activity("Web Navigation", f"{site_name}: {search_query if search_query else 'Home'}")
         return msg
     else:
         # Generic fallback
         search_term = f"{search_query} on {site_name}" if search_query else site_name
         url = f"https://www.google.com/search?q={urllib.parse.quote(search_term)}"
         webbrowser.open(url)
+        # Automatically record history
+        record_user_activity("Web Search", search_term)
         return f"Searching for '{search_term}' on Google."
 
 @tool
@@ -116,8 +133,6 @@ def open_system_app(app_name: str) -> str:
 @tool
 def take_screenshot_and_analyze(query: str = "") -> str:
     """Takes a screenshot of the current screen to 'see' what apps are open."""
-    # Note: In the future, we could send this to a Vision model.
-    # For now, we just list windows as an 'analysis'.
     return list_open_windows()
 
 @tool
@@ -136,6 +151,7 @@ def system_control(action: str) -> str:
         return "Unknown system action."
     except Exception as e:
         return f"System control error: {str(e)}"
+
 @tool
 def get_system_health(query: str = "") -> str:
     """Checks the computer's health: CPU usage, RAM levels, and Battery percentage."""
@@ -162,25 +178,12 @@ def run_terminal_command(command: str) -> str:
         return f"Error running command: {str(e)}"
 
 @tool
-def record_user_activity(activity_type: str, details: str) -> str:
-    """Records user activities like searches or bookings to build a 'Frequently Used' history."""
-    import time
-    history_file = "user_history.txt"
-    try:
-        with open(history_file, "a") as f:
-            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} | {activity_type} | {details}\n")
-        return f"Activity recorded: {activity_type}"
-    except Exception as e:
-        return f"Error recording activity: {str(e)}"
-
-@tool
 def get_frequently_used(query: str = "") -> str:
     """Analyzes history to find and suggest frequently used sites, apps, or searches."""
     history_file = "user_history.txt"
     if not os.path.exists(history_file):
         return "No history found yet. Start using Ruby to see suggestions!"
     try:
-        from collections import Counter
         with open(history_file, "r") as f:
             lines = f.readlines()
         
