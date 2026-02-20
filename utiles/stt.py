@@ -112,6 +112,37 @@ class RubySTT:
         buf.seek(0)
         return buf.read()
 
+    def transcribe_audio(self, wav_bytes: bytes) -> str:
+        """
+        Transcribe provided WAV bytes via OpenAI Whisper.
+
+        Args:
+            wav_bytes (bytes): The WAV audio data.
+
+        Returns:
+            str: The transcribed text.
+        """
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp.write(wav_bytes)
+            tmp_path = tmp.name
+
+        try:
+            with open(tmp_path, "rb") as audio_file:
+                transcript = self.client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    language=self.language_code,
+                )
+            return transcript.text.strip()
+        except Exception as e:
+            print(f"STT: Transcription error: {e}")
+            return ""
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
     def listen(self) -> str:
         """
         Record audio from the microphone and transcribe it via OpenAI Whisper.
@@ -126,28 +157,5 @@ class RubySTT:
             return ""
 
         wav_bytes = self._audio_to_wav_bytes(audio)
-
-        # Write to a named temp file
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp.write(wav_bytes)
-            tmp_path = tmp.name
-
-        try:
-            with open(tmp_path, "rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    language=self.language_code,
-                )
-            result = transcript.text.strip()
-            print(f"STT: OpenAI Whisper: {result}")
-            return result
-        except Exception as e:
-            print(f"STT: OpenAI STT error: {e}")
-            return ""
-        finally:
-            try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+        return self.transcribe_audio(wav_bytes)
 

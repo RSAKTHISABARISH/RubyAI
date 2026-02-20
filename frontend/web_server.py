@@ -12,28 +12,34 @@ from ruby.ruby_mainframe import Ruby
 from utiles.stt import RubySTT
 from utiles.tts import RubyTTS
 
+import base64
+
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Initialize Ruby instance
 ruby = Ruby()
 
-# Override Ruby's state updates to notify the web UI
+# Sync Ruby's state with Web UI
+def update_web_state(state):
+    socketio.emit('state_change', {'state': state}, broadcast=True)
+
+# Wrap Ruby's methods to emit events
 original_speak = ruby.speak
 original_listen = ruby.listen
 
 def web_speak(user_input):
-    socketio.emit('state_change', {'state': 'Thinking'})
-    response = original_speak(user_input)
-    socketio.emit('state_change', {'state': 'Idle'})
-    return response
+    update_web_state('Thinking')
+    res = original_speak(user_input)
+    update_web_state('Idle')
+    return res
 
 def web_listen():
-    socketio.emit('state_change', {'state': 'Listening'})
+    update_web_state('Listening')
     transcript = original_listen()
-    socketio.emit('state_change', {'state': 'Idle'})
+    update_web_state('Idle')
     if transcript:
-        socketio.emit('new_message', {'sender': 'User', 'text': transcript})
+        socketio.emit('new_message', {'sender': 'User', 'text': transcript}, broadcast=True)
     return transcript
 
 ruby.speak = web_speak
@@ -47,6 +53,29 @@ def index():
 def handle_connect():
     print('Client connected')
     emit('state_change', {'state': ruby.ruby_state})
+
+@socketio.on('send_text')
+def handle_text(data):
+    text = data.get('text')
+    if text:
+        socketio.emit('new_message', {'sender': 'User', 'text': text}, broadcast=True)
+        response = ruby.speak(text)
+        socketio.emit('new_message', {'sender': 'Ruby', 'text': response}, broadcast=True)
+
+@socketio.on('mobile_audio')
+def handle_mobile_audio(data):
+    try:
+        audio_b64 = data.get('audio')
+        if not audio_b64: return
+        audio_bytes = base64.b64decode(audio_b64)
+        print("Processing mobile audio...")
+        transcript = ruby.stt.transcribe_audio(audio_bytes)
+        if transcript:
+            socketio.emit('new_message', {'sender': 'User', 'text': transcript}, broadcast=True)
+            response = ruby.speak(transcript)
+            socketio.emit('new_message', {'sender': 'Ruby', 'text': response}, broadcast=True)
+    except Exception as e:
+        print(f"Error processing mobile audio: {e}")
 
 class RubyWorker(threading.Thread):
     def __init__(self, ruby):
