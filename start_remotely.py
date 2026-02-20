@@ -40,7 +40,8 @@ def start_services():
     tunnel_proc = subprocess.Popen(["lt", "--port", str(port)], 
                                     stdout=subprocess.PIPE, 
                                     stderr=subprocess.STDOUT,
-                                    text=True)
+                                    text=True,
+                                    shell=True)
     
     print("\n[3/3] Ready! Scan or copy the link below:")
     print("-" * 50)
