@@ -19,3 +19,4 @@ pygame
 sounddevice
 numpy
 yt-dlp
+requests
