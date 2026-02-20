@@ -81,13 +81,13 @@ class Ruby:
 
         # Initialize TTS (Text-to-Speech)
         if tts is None:
-            self.tts = RubyTTS()
+            self.tts = RubyTTS(language="ta-IN")
         else:
             self.tts = tts
             
         # Initialize STT (Speech-to-Text)
         if stt is None:
-            self.stt = RubySTT()
+            self.stt = RubySTT(language_code="ta")
         else:
             self.stt = stt
 
