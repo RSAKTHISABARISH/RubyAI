@@ -164,15 +164,49 @@ class Ruby:
 
     def run(self):
         """
-        Main loop for console-based interaction.
-        Continuously listens and speaks.
+        Main loop for Ruby with Wake Word and Keyboard Shortcut support.
         """
-        print("--- Ruby is Online ---")
+        import keyboard
+        print("\n--- Ruby is in Standby Mode ---")
+        print("Say 'HELLO RUBY' to start or press 'Ctrl+Shift+R'")
+        
+        is_active = False
+
+        def set_active():
+            nonlocal is_active
+            is_active = True
+            print("\n[Shortcut Triggered] Ruby is now Listening!")
+            self.tts.text_to_speech("How can I help you?")
+
+        # Register Keyboard Shortcut
+        keyboard.add_hotkey('ctrl+shift+r', set_active)
+
         while True:
             try:
+                # If NOT active, just listen for the wake word
+                if not is_active:
+                    self.ruby_state = "Standby"
+                    transcript = self.listen()
+                    if transcript and "hello ruby" in transcript.lower():
+                        is_active = True
+                        print("--- Ruby Activated ---")
+                        self.tts.text_to_speech("Hello! I am online. How can I assist you today?")
+                    continue
+
+                # If active, proceed with normal conversation
                 user_input = self.listen()
                 if user_input:
+                    user_lower = user_input.lower()
+                    
+                    # Check for exit word
+                    if "bye ruby" in user_lower or "go to sleep" in user_lower:
+                        print("--- Ruby Going to Sleep ---")
+                        self.tts.text_to_speech("Goodbye! Say hello ruby whenever you need me.")
+                        is_active = False
+                        continue
+                        
                     self.speak(user_input)
+                    
             except KeyboardInterrupt:
                 print("\nShutting down Ruby...")
                 break

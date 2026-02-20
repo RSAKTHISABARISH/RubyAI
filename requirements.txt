@@ -20,3 +20,4 @@ sounddevice
 numpy
 yt-dlp
 requests
+keyboard
