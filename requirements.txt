@@ -21,3 +21,15 @@ numpy
 yt-dlp
 requests
 keyboard
+huggingface_hub
+faiss-cpu
+pypdf
+langchain-community
+langchain-text-splitters
+pyserial
+pywin32
+duckduckgo-search
+sarvamai
+nest-asyncio
+transformers
+torch

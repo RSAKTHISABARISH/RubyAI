@@ -1,4 +1,4 @@
-# Ruby Core Agent Tools 
+# Ruby Core Agent Tools
 
 from langchain.tools import BaseTool
 from pydantic import PrivateAttr
@@ -111,23 +111,42 @@ class GetLatestNewsTool(BaseTool):
     )
 
     def _run(self, query: str = "") -> str:
-        import requests
         try:
-            # Using a simplified public news feed
-            url = "https://saurav.tech/NewsAPI/top-headlines/category/technology/in.json"
-            response = requests.get(url, timeout=10)
-            data = response.json()
-            articles = data.get('articles', [])
-            
-            if not articles:
-                return "No news found at the moment."
-                
-            headlines = []
-            for item in articles[:5]:
-                title = item.get('title', 'Unknown Title')
-                headlines.append(f"- {title}")
-                
-            return "Top Technology Headlines:\n" + "\n".join(headlines)
+            # Use DuckDuckGo to search for latest news (FREE, no API key)
+            from duckduckgo_search import DDGS
+            search_query = query if query else "latest technology news India today"
+            with DDGS() as ddgs:
+                results = list(ddgs.news(search_query, max_results=5))
+            if results:
+                headlines = [f"- {r.get('title', 'Unknown')}: {r.get('body', '')[:100]}" for r in results]
+                return "Top News Headlines:\n" + "\n".join(headlines)
+            return "No news found at the moment."
         except Exception as e:
             print(f"News Fetch Error: {e}")
-            return "Could not fetch news right now. Please try again later."
+            return "Could not fetch news right now."
+
+
+class DuckDuckGoSearchTool(BaseTool):
+    name: str = "web_search"
+    description: str = (
+        "Search the web using DuckDuckGo. Completely FREE, no API key needed. "
+        "Use this to answer questions about current events, facts, or any topic. "
+        "Input should be the search query string."
+    )
+
+    def _run(self, query: str) -> str:
+        try:
+            from duckduckgo_search import DDGS
+            with DDGS() as ddgs:
+                results = list(ddgs.text(query, max_results=4))
+            if not results:
+                return "No search results found for that query."
+            snippets = []
+            for r in results:
+                title = r.get('title', '')
+                body = r.get('body', '')[:200]
+                snippets.append(f"• {title}: {body}")
+            return "Search Results:\n" + "\n".join(snippets)
+        except Exception as e:
+            print(f"DuckDuckGo Search Error: {e}")
+            return f"Search failed: {str(e)}"

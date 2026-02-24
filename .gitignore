@@ -44,3 +44,8 @@ alif_school.json
 ruby_rag/db/
 test_location.py
 requirements_deploy.txt
+*.log
+err.log
+final_ruby.err
+server_log.txt
+user_history.txt

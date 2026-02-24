@@ -1,6 +1,5 @@
-from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage, SystemMessage
+from utiles.api_brain import get_brain
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from dotenv import load_dotenv
 import sys
 import os
@@ -16,6 +15,7 @@ from utiles.ruby_tools import (
     GetAvailableLanguagesTool,
     SwitchLanguageTool,
     GetLatestNewsTool,
+    DuckDuckGoSearchTool,
 )
 from utiles.toolbox import (
     calculator,
@@ -41,22 +41,21 @@ class Ruby:
     Ruby Mainframe Class.
 
     This class serves as the central brain of the Ruby assistant. 
-    It integrates Speech-to-Text (STT), Text-to-Speech (TTS), and the LangChain 
-    agent logic to handle user interactions and tool execution.
+    It integrates Speech-to-Text (STT), Text-to-Speech (TTS), and the AI
+    brain logic to handle user interactions and tool execution.
     """
-    def __init__(self, tts=None, model="gpt-4o", system_prompt=system_prompt, tools=[], stt=None):
+    def __init__(self, tts=None, model=None, system_prompt=system_prompt, tools=[], stt=None):
         """
         Initialize the Ruby agent.
 
         Args:
             tts: RubyTTS instance (optional).
-            model: Name of the OpenAI model to use (default: "gpt-4o").
+            model: Optional model name override.
             system_prompt: System instructions for the agent.
             tools: List of additional tools.
             stt: RubySTT instance (optional).
         """
-        self.model_name = model
-        self.ruby_state = "idel"
+        self.ruby_state = "Idle"
         self.system_prompt = system_prompt
         
         # Combine default built-in tools with any extra tools provided
@@ -64,7 +63,8 @@ class Ruby:
                         YouTubeVideoPlayerTool(self),   # Tool for playing YouTube videos
                         GetAvailableLanguagesTool(self), # Tool to check supported languages
                         SwitchLanguageTool(self),       # Tool to switch active language
-                        GetLatestNewsTool(),            # Tool to fetch latest news
+                        GetLatestNewsTool(),            # Tool to fetch latest news (DuckDuckGo)
+                        DuckDuckGoSearchTool(),         # FREE web search engine (no key needed)
                         calculator,                     # Basic calculator
                         query_document,                 # RAG document query tool
                         arduino_serial_communication,   # Hardware control tool
@@ -79,15 +79,15 @@ class Ruby:
                         get_frequently_used,            # Suggest popular actions
                     ] + tools
 
-        # Initialize TTS (Text-to-Speech)
+        # Initialize TTS (Text-to-Speech) — uses Edge-TTS (FREE, no key)
         if tts is None:
-            self.tts = RubyTTS(language="ta-IN")
+            self.tts = RubyTTS(language="en-IN")
         else:
             self.tts = tts
             
         # Initialize STT (Speech-to-Text)
         if stt is None:
-            self.stt = RubySTT(language_code="ta")
+            self.stt = RubySTT(language_code="en")
         else:
             self.stt = stt
 
@@ -95,14 +95,15 @@ class Ruby:
         # Initialize conversation history with the system prompt
         self.chat_history = {"messages": [SystemMessage(content=self.system_prompt)]}
         
-        # Create the LangChain agent using OpenAI
-        self.model = create_agent(
-            model=ChatOpenAI(model=self.model_name),
-            tools=self.tools,
-            system_prompt=self.system_prompt,
-        )
+        # Create the brain (Groq/Gemini/DuckDuckGo — all free options)
+        self.model = get_brain()
+        print(f"✅ Ruby Brain loaded: {type(self.model).__name__}")
 
-    def speak(self, user_input):
+    def _run_tool(self, user_lower, user_input):
+        return None
+
+
+    def speak(self, user_input, play_audio=True):
         """
         Process user input and generate a response.
         """
@@ -117,56 +118,100 @@ class Ruby:
         response_text = None
 
         if any(keyword in user_lower for keyword in creator_keywords):
-            response_text = "I was developed by MR. DR. SIVA PRAKASH."
+            response_text = "I was developed by MR. DR. SIVA PRAKASH at Mensch Robotics, Coimbatore."
         elif any(keyword in user_lower for keyword in hod_aiml_keywords):
             response_text = "The HOD of AIML is MR. DR. SIVA PRAKASH."
 
         if response_text:
             self.chat_history["messages"].append(HumanMessage(content=user_input))
-            from langchain_core.messages import AIMessage
             self.chat_history["messages"].append(AIMessage(content=response_text))
-            
-            self.ruby_state = "Speaking"
-            self.tts.text_to_speech(response_text)
-            self.ruby_state = "idel"
+            if play_audio:
+                self.ruby_state = "Speaking"
+                self.tts.text_to_speech(response_text)
+                self.ruby_state = "Idle"
             return response_text
 
+        # --- AI BRAIN (Groq / Gemini / DuckDuckGo) ---
         self.ruby_state = "Thinking"
         self.chat_history["messages"].append(HumanMessage(content=user_input))
         
-        # Get response from the agent
-        response = self.model.invoke(self.chat_history)
-        
-        # Add agent's response to history
-        self.chat_history["messages"].append(response["messages"][-1])
-        
-        self.ruby_state = "Speaking"
-        # Synthesis speech from the text response
-        self.tts.text_to_speech(response["messages"][-1].content)
-        
-        self.ruby_state = "idel"
-        return response["messages"][-1].content
+        try:
+            # Pass BOTH messages and tools to the brain
+            response = self.model.invoke({
+                "messages": self.chat_history["messages"],
+                "tools": self.tools
+            })
+            
+            ai_message = response["messages"][-1]
+            self.chat_history["messages"].append(ai_message)
+            
+            res_content = ai_message.content
+            if play_audio:
+                self.ruby_state = "Speaking"
+                self.tts.text_to_speech(res_content)
+                self.ruby_state = "Idle"
+            
+            return res_content
+        except Exception as e:
+            self.ruby_state = "Idle"
+            if "quota" in str(e).lower() or "429" in str(e):
+                err_msg = "API limit reached. Get a free Groq key at console.groq.com and add it to your .env file!"
+            elif "401" in str(e) or "invalid" in str(e).lower():
+                err_msg = "API key is invalid. Please check your .env file and add a valid key."
+            else:
+                err_msg = f"I encountered an error: {str(e)}"
+            
+            if play_audio:
+                self.tts.text_to_speech(err_msg)
+            return err_msg
     
     def listen(self):
         """
-        Listen for user audio input.
+        Listen for user audio input using the microphone.
         """
         self.ruby_state = "Listening"
         transcript = self.stt.listen()
         if transcript:
             print(f"User: {transcript}")
+        self.ruby_state = "Idle"
         return transcript
+
+    def speech_to_respond(self, audio_bytes):
+        """
+        Complete Voice-to-Voice pipeline: Audio -> Text -> AI -> Text -> Audio
+        """
+        # 1. Transcribe
+        self.ruby_state = "Hearing You"
+        transcript = self.stt.transcribe_audio(audio_bytes)
+        if not transcript:
+            return None, None, None
+            
+        # 2. Process via AI
+        self.ruby_state = "Thinking"
+        response_text = self.speak(transcript, play_audio=False)
+        
+        # 3. Generate Speech Audio
+        self.ruby_state = "Responding"
+        audio_b64 = self.tts.get_speech_base64(response_text)
+        
+        self.ruby_state = "Ready"
+        return transcript, response_text, audio_b64
 
     def reset(self):
         """Reset the conversation history to the initial system prompt."""
         self.chat_history = {"messages": [SystemMessage(content=self.system_prompt)]}
-        self.ruby_state = "idel"
+        self.ruby_state = "Idle"
 
     def run(self):
         """
         Main loop for Ruby with Wake Word and Keyboard Shortcut support.
         """
-        import keyboard
+        try:
+            import keyboard
+            has_keyboard = True
+        except ImportError:
+            has_keyboard = False
+            
         print("\n--- Ruby is in Standby Mode ---")
         print("Say 'HELLO RUBY' to start or press 'Ctrl+Shift+R'")
         
@@ -178,12 +223,11 @@ class Ruby:
             print("\n[Shortcut Triggered] Ruby is now Listening!")
             self.tts.text_to_speech("How can I help you?")
 
-        # Register Keyboard Shortcut
-        keyboard.add_hotkey('ctrl+shift+r', set_active)
+        if has_keyboard:
+            keyboard.add_hotkey('ctrl+shift+r', set_active)
 
         while True:
             try:
-                # If NOT active, just listen for the wake word
                 if not is_active:
                     self.ruby_state = "Standby"
                     transcript = self.listen()
@@ -193,12 +237,10 @@ class Ruby:
                         self.tts.text_to_speech("Hello! I am online. How can I assist you today?")
                     continue
 
-                # If active, proceed with normal conversation
                 user_input = self.listen()
                 if user_input:
                     user_lower = user_input.lower()
                     
-                    # Check for exit word
                     if "bye ruby" in user_lower or "go to sleep" in user_lower:
                         print("--- Ruby Going to Sleep ---")
                         self.tts.text_to_speech("Goodbye! Say hello ruby whenever you need me.")
@@ -212,4 +254,3 @@ class Ruby:
                 break
             except Exception as e:
                 print(f"Error in main loop: {e}")
-

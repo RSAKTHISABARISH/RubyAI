@@ -1,10 +1,8 @@
 import os
 import io
 import wave
-import tempfile
 import numpy as np
 import sounddevice as sd
-from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,10 +10,12 @@ load_dotenv()
 
 class RubySTT:
     """
-    Ruby Speech-to-Text (STT) Module — powered by OpenAI Whisper.
+    Ruby Speech-to-Text (STT) Module.
 
-    Records audio from the microphone using sounddevice, then sends it
-    to OpenAI's Whisper API for transcription.
+    Priority chain (all FREE):
+    1. Google Speech Recognition via `speech_recognition` lib (FREE, no key needed for basic use)
+    2. Gemini audio transcription (free tier, if GEMINI_API_KEY is set)
+    3. Returns empty string if all fail
     """
 
     def __init__(
@@ -26,39 +26,19 @@ class RubySTT:
         silence_duration: float = 1.5,
         max_duration: float = 15.0,
     ):
-        """
-        Initialize the RubySTT instance.
-
-        Args:
-            language_code (str): Language hint for Whisper (e.g. 'en', 'ml', 'ta').
-            sample_rate (int): Audio sample rate (default: 16000).
-            silence_threshold (float): RMS level below which audio is considered silence.
-            silence_duration (float): Seconds of silence before stopping recording.
-            max_duration (float): Maximum recording duration in seconds.
-        """
         self.language_code = language_code
         self.sample_rate = sample_rate
         self.silence_threshold = silence_threshold
         self.silence_chunks = int(silence_duration * sample_rate / 1024)
         self.max_chunks = int(max_duration * sample_rate / 1024)
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     def update_language(self, language_code: str):
-        """
-        Update the recognition language dynamically.
-
-        Args:
-            language_code (str): BCP-47 language code (e.g. 'en-IN' -> will use 'en').
-        """
-        # Whisper uses short codes like 'en', 'ml', 'ta'
+        """Update the recognition language dynamically."""
         self.language_code = language_code.split("-")[0]
 
     def _record_audio(self) -> np.ndarray:
         """
         Record audio from microphone until silence is detected or max duration reached.
-
-        Returns:
-            np.ndarray: Recorded audio as a float32 array.
         """
         print("STT: Listening... (speak now)")
         frames = []
@@ -84,7 +64,7 @@ class RubySTT:
                     frames.append(data.copy())
                     silent_chunks += 1
                     if silent_chunks >= self.silence_chunks:
-                        break  # Stop after enough silence
+                        break
 
         if not frames:
             return np.zeros((0,), dtype="float32")
@@ -92,21 +72,12 @@ class RubySTT:
         return np.concatenate(frames, axis=0).flatten()
 
     def _audio_to_wav_bytes(self, audio: np.ndarray) -> bytes:
-        """
-        Convert a float32 numpy array to WAV bytes in memory.
-
-        Args:
-            audio (np.ndarray): Audio samples.
-
-        Returns:
-            bytes: WAV file bytes.
-        """
-        # Convert float32 to int16 PCM
+        """Convert float32 numpy array to WAV bytes."""
         audio_int16 = (audio * 32767).astype(np.int16)
         buf = io.BytesIO()
         with wave.open(buf, "wb") as wf:
             wf.setnchannels(1)
-            wf.setsampwidth(2)  # 2 bytes = int16
+            wf.setsampwidth(2)
             wf.setframerate(self.sample_rate)
             wf.writeframes(audio_int16.tobytes())
         buf.seek(0)
@@ -114,48 +85,135 @@ class RubySTT:
 
     def transcribe_audio(self, wav_bytes: bytes) -> str:
         """
-        Transcribe provided WAV bytes via OpenAI Whisper.
-
-        Args:
-            wav_bytes (bytes): The WAV audio data.
-
-        Returns:
-            str: The transcribed text.
+        Transcribe WAV audio bytes.
+        
+        Tries these FREE services in order:
+        1. Google Speech Recognition (speech_recognition library) - FREE, no key needed
+        2. Gemini audio transcription - FREE tier with GEMINI_API_KEY
         """
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-            tmp.write(wav_bytes)
-            tmp_path = tmp.name
-
-        try:
-            with open(tmp_path, "rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    language=self.language_code,
-                )
-            return transcript.text.strip()
-        except Exception as e:
-            print(f"STT: Transcription error: {e}")
-            return ""
-        finally:
+        # Method 0: Sarvam AI STT (Official SDK)
+        sarvam_key = os.getenv("SARVAM_API_KEY")
+        if sarvam_key and "your_" not in sarvam_key:
             try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
+                import base64
+                import asyncio
+                from sarvamai import AsyncSarvamAI
+                
+                # Convert bytes to base64 as required by the snippet
+                audio_b64 = base64.b64encode(wav_bytes).decode("utf-8")
+                
+                async def run_sarvam_stt():
+                    client = AsyncSarvamAI(api_subscription_key=sarvam_key)
+                    # Mapping language for Sarvam
+                    lang_map = {
+                        "en": "en-IN", "hi": "hi-IN", "ta": "ta-IN", 
+                        "ml": "ml-IN", "te": "te-IN", "kn": "kn-IN"
+                    }
+                    sarvam_lang = lang_map.get(self.language_code, "en-IN")
+                    
+                    try:
+                        async with client.speech_to_text_streaming.connect(
+                            model="saaras:v3",
+                            mode="translate", # Or "transcribe" based on preference, user asked for translate logic
+                            language_code=sarvam_lang,
+                            high_vad_sensitivity=True
+                        ) as ws:
+                            await ws.transcribe(audio=audio_b64)
+                            response = await ws.recv()
+                            # Ensure we get the text from the response object
+                            if hasattr(response, 'transcript'):
+                                return response.transcript
+                            elif isinstance(response, dict):
+                                return response.get("transcript", "")
+                            return str(response)
+                    except Exception as e:
+                        print(f"Sarvam SDK Connect Error: {e}")
+                        return ""
+
+                # Run the async function synchronously
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                transcript = loop.run_until_complete(run_sarvam_stt())
+                loop.close()
+                
+                if transcript:
+                    print(f"STT (Sarvam SDK): {transcript}")
+                    return transcript
+            except Exception as e:
+                print(f"STT Sarvam SDK Exception: {e}")
+
+        # Method 1: Google Speech Recognition (speech_recognition library) — completely FREE
+        try:
+            import speech_recognition as sr
+            import io as _io
+            
+            recognizer = sr.Recognizer()
+            audio_file = _io.BytesIO(wav_bytes)
+            
+            with sr.AudioFile(audio_file) as source:
+                audio_data = recognizer.record(source)
+            
+            # Map language code to Google's format
+            lang_map = {
+                "en": "en-IN",
+                "ta": "ta-IN",
+                "ml": "ml-IN",
+            }
+            google_lang = lang_map.get(self.language_code, "en-IN")
+            
+            transcript = recognizer.recognize_google(audio_data, language=google_lang)
+            print(f"STT (Google Free): {transcript}")
+            return transcript
+            
+        except Exception as e:
+            print(f"STT Google Free Error: {e}")
+        
+        # Method 2: Gemini transcription (free tier)
+        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if gemini_key and "your_" not in gemini_key:
+            try:
+                from google import genai
+                from google.genai import types
+                
+                client = genai.Client(api_key=gemini_key)
+                
+                contents = [
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text="Transcribe this audio exactly. Output ONLY the transcription text and nothing else."),
+                            types.Part.from_bytes(data=wav_bytes, mime_type="audio/wav")
+                        ],
+                    ),
+                ]
+                
+                # Use the correct model name
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=contents
+                )
+                
+                transcript = response.text.strip()
+                if ":" in transcript and len(transcript.split(":")[0]) < 20:
+                    transcript = transcript.split(":")[-1].strip()
+                
+                print(f"STT (Gemini): {transcript}")
+                return transcript
+                
+            except Exception as e:
+                print(f"STT Gemini Error: {e}")
+        
+        return ""
 
     def listen(self) -> str:
         """
-        Record audio from the microphone and transcribe it via OpenAI Whisper.
-
-        Returns:
-            str: The transcribed text, or empty string on failure.
+        Record audio from the microphone and transcribe it.
+        Uses completely FREE speech recognition.
         """
         audio = self._record_audio()
 
         if len(audio) == 0:
-            print("STT: No audio detected.")
             return ""
 
         wav_bytes = self._audio_to_wav_bytes(audio)
         return self.transcribe_audio(wav_bytes)
-

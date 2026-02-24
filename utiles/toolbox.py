@@ -29,8 +29,8 @@ def arduino_serial_communication(query: str) -> str:
 
 @tool
 def query_document(query: str) -> str:
-    """Queries a document using the RobiRAG class."""
+    """Queries a document using the RubyRAG class."""
     try:
-        return rag_utiles.RobiRAG().query(query)
+        return rag_utiles.RubyRAG().query(query)
     except Exception as e:
         return str(e)

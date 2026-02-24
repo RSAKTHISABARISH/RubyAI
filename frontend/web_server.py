@@ -4,6 +4,13 @@ import threading
 import os
 import sys
 import time
+import io
+
+# Fix Windows charmap encoding issue for Unicode output
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Add parent directory to path to import Ruby
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -15,7 +22,7 @@ from utiles.tts import RubyTTS
 import base64
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=True, engineio_logger=True)
 
 # Initialize Ruby instance
 ruby = Ruby()
@@ -28,10 +35,14 @@ def update_web_state(state):
 original_speak = ruby.speak
 original_listen = ruby.listen
 
-def web_speak(user_input):
+def web_speak(user_input, play_audio=True):
     update_web_state('Thinking')
-    res = original_speak(user_input)
-    update_web_state('Idle')
+    # Disable local server audio, only send to browser
+    res = original_speak(user_input, play_audio=False) 
+    if res:
+        audio_b64 = ruby.tts.get_speech_base64(res)
+        socketio.emit('speak_audio', {'audio': audio_b64})
+    update_web_state('Ready')
     return res
 
 def web_listen():
@@ -53,14 +64,34 @@ def index():
 def handle_connect():
     print('Client connected')
     emit('state_change', {'state': ruby.ruby_state})
+    # Greeting
+    greeting = "Hello! Ruby Core is online. How can I assist you today?"
+    emit('new_message', {'sender': 'Ruby', 'text': greeting})
+    audio_b64 = ruby.tts.get_speech_base64(greeting)
+    emit('speak_audio', {'audio': audio_b64})
 
 @socketio.on('send_text')
 def handle_text(data):
     text = data.get('text')
+    print(f"Server: Received text command: {text}")
     if text:
-        socketio.emit('new_message', {'sender': 'User', 'text': text})
-        response = ruby.speak(text)
-        socketio.emit('new_message', {'sender': 'Ruby', 'text': response})
+        try:
+            socketio.emit('new_message', {'sender': 'User', 'text': text})
+            socketio.emit('state_change', {'state': 'Thinking'})
+            
+            # Process via Ruby (Assistant Logic)
+            response = ruby.speak(text, play_audio=False) 
+            
+            # Response message and state are already handled in part by web_speak, 
+            # but we can keep new_message for clarity if needed.
+            # Actually, web_speak doesn't emit new_message, so we keep that.
+            socketio.emit('new_message', {'sender': 'Ruby', 'text': response})
+            socketio.emit('state_change', {'state': 'Ready'})
+        except Exception as e:
+            error_msg = f"Ruby Core Error: {str(e)}"
+            print(error_msg)
+            socketio.emit('new_message', {'sender': 'Ruby', 'text': error_msg})
+            socketio.emit('state_change', {'state': 'Error'})
 
 @socketio.on('mobile_audio')
 def handle_mobile_audio(data):
@@ -68,14 +99,19 @@ def handle_mobile_audio(data):
         audio_b64 = data.get('audio')
         if not audio_b64: return
         audio_bytes = base64.b64decode(audio_b64)
-        print("Processing mobile audio...")
-        transcript = ruby.stt.transcribe_audio(audio_bytes)
+        print("Processing mobile audio (Speech-to-Respond)...")
+        
+        # Use the unified Speech-to-Respond function
+        transcript, response, response_audio = ruby.speech_to_respond(audio_bytes)
+        
         if transcript:
             socketio.emit('new_message', {'sender': 'User', 'text': transcript})
-            response = ruby.speak(transcript)
             socketio.emit('new_message', {'sender': 'Ruby', 'text': response})
+            # socketio.emit('speak_audio', {'audio': response_audio}) -> Removed to prevent double audio
+            socketio.emit('state_change', {'state': 'Ready'})
     except Exception as e:
         print(f"Error processing mobile audio: {e}")
+        socketio.emit('state_change', {'state': 'Error'})
 
 class RubyWorker(threading.Thread):
     def __init__(self, ruby):
@@ -92,11 +128,25 @@ class RubyWorker(threading.Thread):
                     response = self.ruby.speak(user_input)
                     socketio.emit('new_message', {'sender': 'Ruby', 'text': response})
             except Exception as e:
-                print(f"Ruby Thread Error: {e}")
+                try:
+                    print(f"Ruby Thread Error: {e}")
+                except Exception:
+                    pass
                 time.sleep(1)
 
 if __name__ == '__main__':
-    worker = RubyWorker(ruby)
-    worker.start()
     port = int(os.environ.get("PORT", 5001))
-    socketio.run(app, debug=False, host='0.0.0.0', port=port)
+    
+    def start_worker():
+        time.sleep(5) # Give the server time to bind
+        print("Starting Ruby Worker...")
+        worker = RubyWorker(ruby)
+        worker.start()
+
+    # threading.Thread(target=start_worker, daemon=True).start()
+    
+    print(f"Starting server on port {port}...")
+    try:
+        socketio.run(app, debug=False, host='127.0.0.1', port=port, allow_unsafe_werkzeug=True)
+    except Exception as e:
+        print(f"Startup Error: {e}")
