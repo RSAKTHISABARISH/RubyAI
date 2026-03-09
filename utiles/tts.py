@@ -145,13 +145,13 @@ class RubyTTS:
                 payload = {
                     "inputs": [text],
                     "target_language_code": sarvam_lang,
-                    "speaker": "hi-IN-MadhavNeural", # Male speaker for Sarvam
+                    "speaker": "abhilash", # Valid male speaker for Sarvam
                     "pitch": 0,
                     "pace": 1.0,
                     "loudness": 1.5,
                     "speech_sample_rate": 24000, # Increased from 8000 for high quality
                     "enable_preprocessing": True,
-                    "model": "bulbul:v1"
+                    "model": "bulbul:v3"
                 }
                 
                 headers = {
