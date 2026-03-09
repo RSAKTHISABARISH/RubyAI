@@ -62,7 +62,7 @@ def start_services():
     print("\n[2/3] Starting Public Tunnel...")
     
     # Method A: LocalTunnel
-    tunnel_proc = subprocess.Popen(["lt", "--port", str(port)], 
+    tunnel_proc = subprocess.Popen(["npx", "localtunnel", "--port", str(port)], 
                                     stdout=subprocess.PIPE, 
                                     stderr=subprocess.STDOUT,
                                     text=True,
