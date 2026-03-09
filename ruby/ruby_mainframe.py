@@ -32,6 +32,11 @@ from utiles.pc_tools import (
     run_terminal_command,
     record_user_activity,
     get_frequently_used,
+    close_application,
+    pc_automation,
+    file_operation,
+    get_weather,
+    get_chrome_activity,
 )
 load_dotenv()
 
@@ -72,11 +77,16 @@ class Ruby:
                         list_open_windows,              # See open apps
                         open_system_app,                # Start apps
                         system_control,                 # Volume/System control
-                        web_navigation,                 # Navigate to websites
+                        web_navigation,                 # Navigate to websites (Chrome Focus)
                         get_system_health,              # Check CPU/Battery
                         run_terminal_command,           # Execute terminal commands
                         record_user_activity,           # Log user actions
                         get_frequently_used,            # Suggest popular actions
+                        close_application,              # Close running apps
+                        pc_automation,                  # System automation (Minimize, Lock, etc.)
+                        file_operation,                 # File management (List, Info, Copy)
+                        get_weather,                    # Weather info
+                        get_chrome_activity,            # NEW: Identify what is playing in Chrome/JioHotstar
                     ] + tools
 
         # Initialize TTS (Text-to-Speech) — uses Edge-TTS (FREE, no key)

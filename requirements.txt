@@ -33,3 +33,4 @@ sarvamai
 nest-asyncio
 transformers
 torch
+screen-brightness-control

@@ -8,6 +8,22 @@ from collections import Counter
 from langchain.tools import tool
 import win32gui
 import win32process
+import webbrowser
+import shutil
+from datetime import datetime
+
+def _open_in_chrome(url: str):
+    """Helper to force open a URL in Google Chrome on Windows."""
+    try:
+        # Standard way to find chrome on Windows
+        chrome_path = "C:/Program Files/Google/Chrome/Application/chrome.exe"
+        if os.path.exists(chrome_path):
+            subprocess.Popen([chrome_path, url], shell=False)
+        else:
+            # Fallback if path is different
+            subprocess.Popen(f"start chrome \"{url}\"", shell=True)
+    except Exception:
+        webbrowser.open(url)
 
 @tool
 def get_current_location(query: str = "") -> str:
@@ -22,7 +38,8 @@ def get_current_location(query: str = "") -> str:
 
 @tool
 def list_open_windows(query: str = "") -> str:
-    """Lists all visible application windows currently open on the computer."""
+    """Lists all visible application windows currently open on the computer. 
+    Use this to see what apps the user is currently interacting with."""
     def callback(hwnd, windows):
         if win32gui.IsWindowVisible(hwnd):
             title = win32gui.GetWindowText(hwnd)
@@ -33,6 +50,40 @@ def list_open_windows(query: str = "") -> str:
     windows = []
     win32gui.EnumWindows(callback, windows)
     return "Open Windows: " + ", ".join(list(set(windows)))
+
+@tool
+def get_chrome_activity(query: str = "") -> str:
+    """Checks all open Google Chrome windows to see what websites or media (like JioHotstar, YouTube) are currently active.
+    Returns the titles of all active Chrome tabs."""
+    def callback(hwnd, windows):
+        if win32gui.IsWindowVisible(hwnd):
+            title = win32gui.GetWindowText(hwnd)
+            if "google chrome" in title.lower():
+                windows.append(title)
+        return True
+    
+    tabs = []
+    win32gui.EnumWindows(callback, tabs)
+    if not tabs:
+        return "No active Chrome windows found."
+    return "Current Chrome Activity: " + " | ".join(list(set(tabs)))
+
+@tool
+def close_application(app_name: str) -> str:
+    """Closes an application by its name (e.g., 'notepad', 'chrome', 'calculator')."""
+    try:
+        app_name = app_name.lower().strip()
+        closed_count = 0
+        for proc in psutil.process_iter(['name']):
+            if app_name in proc.info['name'].lower():
+                proc.terminate()
+                closed_count += 1
+        
+        if closed_count > 0:
+            return f"Successfully closed {closed_count} instances of '{app_name}'."
+        return f"No running application found matching '{app_name}'."
+    except Exception as e:
+        return f"Error closing application: {str(e)}"
 
 @tool
 def record_user_activity(activity_type: str, details: str) -> str:
@@ -57,10 +108,9 @@ def _record_activity_internal(activity_type: str, details: str):
 @tool
 def web_navigation(site_name: str, search_query: str = "") -> str:
     """
-    Navigates to popular websites or searches for specific products on them.
+    Navigates to popular websites or searches for specific products on them in Google Chrome.
     Examples: site_name='amazon', search_query='laptop' -> Searches Amazon for laptops.
     """
-    import webbrowser
     import urllib.parse
     
     # URL encoded query
@@ -86,10 +136,20 @@ def web_navigation(site_name: str, search_query: str = "") -> str:
         "myntra": {"base": "https://www.myntra.com", "search": "https://www.myntra.com/"},
         "google": {"base": "https://www.google.com", "search": "https://www.google.com/search?q="},
         "youtube": {"base": "https://www.youtube.com", "search": "https://www.youtube.com/results?search_query="},
+        "facebook": {"base": "https://www.facebook.com", "search": "https://www.facebook.com/search/top/?q="},
+        "twitter": {"base": "https://www.twitter.com", "search": "https://twitter.com/search?q="},
+        "reddit": {"base": "https://www.reddit.com", "search": "https://www.reddit.com/search/?q="},
     }
     
     clean_site = site_name.lower().strip()
     
+    # --- Direct URL detection ---
+    if "." in clean_site and " " not in clean_site:
+        url = clean_site if clean_site.startswith(("http://", "https://")) else f"https://{clean_site}"
+        _open_in_chrome(url)
+        _record_activity_internal("Web Navigation", f"Direct URL: {url}")
+        return f"Directing you to {url} in Google Chrome."
+
     # Keyword associations
     if "ticket" in clean_site or "book" in clean_site:
         if "bus" in clean_site: clean_site = "redbus"
@@ -113,12 +173,11 @@ def web_navigation(site_name: str, search_query: str = "") -> str:
     is_rate_request = any(k in clean_site or k in search_query.lower() for k in ["gold", "silver", "rate", "price"])
 
     if is_official_request and clean_site not in mapping:
-        # If user asks for an official site not in mapping, force google search with lucky-style query
         search_term = f"{site_name} {search_query}".strip()
         if "official website" not in search_term.lower():
             search_term += " official website"
         url = f"https://www.google.com/search?q={urllib.parse.quote(search_term)}"
-        webbrowser.open(url)
+        _open_in_chrome(url)
         _record_activity_internal("Web Search", search_term)
         return f"Redirecting you to the official website for '{site_name}'."
 
@@ -127,7 +186,7 @@ def web_navigation(site_name: str, search_query: str = "") -> str:
         if "today" not in search_term.lower():
             search_term += " rate today"
         url = f"https://www.google.com/search?q={urllib.parse.quote(search_term)}"
-        webbrowser.open(url)
+        _open_in_chrome(url)
         _record_activity_internal("Rate Search", search_term)
         return f"Fetching the latest '{search_term}' for you."
 
@@ -141,16 +200,14 @@ def web_navigation(site_name: str, search_query: str = "") -> str:
             url = config['base']
             msg = f"Opening {clean_site} for you."
         
-        webbrowser.open(url)
-        # Automatically record history
+        _open_in_chrome(url)
         _record_activity_internal("Web Navigation", f"{clean_site}: {search_query if search_query else 'Home'}")
         return msg
     else:
         # Generic fallback
         search_term = f"{search_query} on {site_name}" if search_query else site_name
         url = f"https://www.google.com/search?q={urllib.parse.quote(search_term)}"
-        webbrowser.open(url)
-        # Automatically record history
+        _open_in_chrome(url)
         _record_activity_internal("Web Search", search_term)
         return f"Searching for '{search_term}' on Google."
 
@@ -160,39 +217,106 @@ def open_system_app(app_name: str) -> str:
     try:
         name = app_name.lower().strip()
         if "chrome" in name:
-            subprocess.Popen(["start", "chrome"], shell=True)
+            subprocess.Popen(f"start chrome", shell=True)
         elif "notepad" in name:
             subprocess.Popen(["notepad.exe"])
         elif "calc" in name:
             subprocess.Popen(["calc.exe"])
         elif "camera" in name:
             subprocess.Popen(["start", "microsoft.windows.camera:"], shell=True)
+        elif "spotify" in name:
+             subprocess.Popen(f"start spotify", shell=True)
         else:
-            # Try to launch via shell for generic names
             os.system(f"start {app_name}")
         return f"Successfully attempted to launch: {app_name}"
     except Exception as e:
         return f"Failed to open {app_name}: {str(e)}"
 
 @tool
-def take_screenshot_and_analyze(query: str = "") -> str:
-    """Takes a screenshot of the current screen to 'see' what apps are open."""
-    # Use the internal function logic instead of calling the tool object
-    def get_windows():
-        def callback(hwnd, windows):
-            if win32gui.IsWindowVisible(hwnd):
-                title = win32gui.GetWindowText(hwnd)
-                if title:
-                    windows.append(title)
-            return True
-        windows = []
-        win32gui.EnumWindows(callback, windows)
-        return "Open Windows: " + ", ".join(list(set(windows)))
-    return get_windows()
+def pc_automation(command: str) -> str:
+    """Performs PC automation tasks like 'minimize_all', 'show_desktop', 'lock_pc', 'shutdown', 'restart'."""
+    try:
+        command = command.lower().strip()
+        if "minimize" in command or "desktop" in command:
+            pyautogui.hotkey('win', 'd')
+            return "Toggled desktop (minimize all)."
+        elif "lock" in command:
+            os.system("rundll32.exe user32.dll,LockWorkStation")
+            return "PC locked."
+        elif "shutdown" in command:
+            os.system("shutdown /s /t 60")
+            return "Shutting down the PC in 60 seconds. Say 'abort shutdown' to stop."
+        elif "abort" in command and "shutdown" in command:
+            os.system("shutdown /a")
+            return "Shutdown aborted."
+        elif "restart" in command:
+            os.system("shutdown /r /t 60")
+            return "Restarting the PC in 60 seconds."
+        return f"Unknown automation command: {command}"
+    except Exception as e:
+        return f"Automation Error: {str(e)}"
+
+@tool
+def file_operation(action: str, path: str, new_path: str = "") -> str:
+    """Performs file operations. Actions: 'list', 'delete', 'move', 'copy', 'info'."""
+    try:
+        path = os.path.abspath(path)
+        if action == "list":
+            if os.path.isdir(path):
+                files = os.listdir(path)
+                return f"Files in {path}:\n" + "\n".join(files[:20])
+            return "Path is not a directory."
+        elif action == "delete":
+            if os.path.isfile(path):
+                os.remove(path)
+                return f"File {path} deleted."
+            elif os.path.isdir(path):
+                shutil.rmtree(path)
+                return f"Directory {path} deleted."
+            return "File not found."
+        elif action == "copy":
+            if not new_path: return "New path required for copy."
+            if os.path.isfile(path):
+                shutil.copy2(path, new_path)
+                return f"Copied {path} to {new_path}"
+            return "Source is not a file."
+        elif action == "info":
+            stats = os.stat(path)
+            size = stats.st_size
+            mtime = datetime.fromtimestamp(stats.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+            return f"Path: {path}\nSize: {size} bytes\nLast Modified: {mtime}"
+        return "Unknown file operation."
+    except Exception as e:
+        return f"File Op Error: {str(e)}"
+
+@tool
+def get_weather(city: str = "") -> str:
+    """Gets the current weather for a city or the user's current location."""
+    try:
+        import requests
+        if not city:
+            g = geocoder.ip('me')
+            if not g.ok: return "Could not determine local city for weather."
+            lat, lon = g.latlng
+            city = g.city
+        else:
+            # Geocode city name
+            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language=en&format=json"
+            res = requests.get(geo_url).json()
+            if not res.get('results'): return f"Could not find coordinates for {city}."
+            lat, lon = res['results'][0]['latitude'], res['results'][0]['longitude']
+            city = res['results'][0]['name']
+
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        w_res = requests.get(weather_url).json()
+        current = w_res['current_weather']
+        return f"Weather in {city}: {current['temperature']}°C, Wind Speed: {current['windspeed']} km/h"
+    except Exception as e:
+        return f"Weather Error: {str(e)}"
 
 @tool
 def system_control(action: str) -> str:
-    """Controls system settings. Actions: 'volume_up', 'volume_down', 'mute', 'brightness_up', 'brightness_down'."""
+    """Controls system settings. Actions: 'volume_up', 'volume_down', 'mute', 'brightness_up', 'brightness_down', 'sleep', 'settings'."""
     try:
         if action == "volume_up":
             for _ in range(5): pyautogui.press("volumeup")
@@ -268,3 +392,4 @@ def get_frequently_used(query: str = "") -> str:
         return "Your Frequently Used Activities:\n" + "\n".join(suggestions)
     except Exception as e:
         return f"Error reading history: {str(e)}"
+

@@ -18,7 +18,7 @@ Since the server is already **RUNNING**, you can see the demo yourself right now
 1.  **Open Chrome**: Go to [http://localhost:5001](http://localhost:5001).
 2.  **First Contact**: Click anywhere on the screen (this "wakes up" the browser audio).
 3.  **Command Ruby**:
-    *   Say: *"Who created you?"* -> Ruby will answer *"MR. DR. SIVA PRAKASH"*.
+    *   Say: *"Who created you?"* -> Ruby will answer *"MR.SAKTHI SABARISH R"*.
     *   Say: *"Open YouTube and play trending music"* -> Ruby will instantly open your browser.
     *   Say: *"Search for a laptop on Amazon"* -> Ruby will find it for you.
 4.  **Tamil Support**: Ruby also understands and speaks Tamil fluently.
