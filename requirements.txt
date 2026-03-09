@@ -27,7 +27,7 @@ pypdf
 langchain-community
 langchain-text-splitters
 pyserial
-pywin32
+pywin32; sys_platform == 'win32'
 duckduckgo-search
 sarvamai
 nest-asyncio
